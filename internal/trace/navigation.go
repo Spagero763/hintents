@@ -14,6 +14,7 @@ type ExecutionState struct {
 	Step           int                    `json:"step"`
 	Timestamp      time.Time              `json:"timestamp"`
 	Operation      string                 `json:"operation"`
+	EventType      string                 `json:"event_type,omitempty"` // trap, contract_call, host_function, auth, or empty for inferred
 	ContractID     string                 `json:"contract_id,omitempty"`
 	Function       string                 `json:"function,omitempty"`
 	Arguments      []interface{}          `json:"arguments,omitempty"`
@@ -23,17 +24,6 @@ type ExecutionState struct {
 	Error          string                 `json:"error,omitempty"`
 	HostState      map[string]interface{} `json:"host_state,omitempty"`
 	Memory         map[string]interface{} `json:"memory,omitempty"`
-	Step        int                    `json:"step"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Operation   string                 `json:"operation"`
-	EventType   string                 `json:"event_type,omitempty"` // trap, contract_call, host_function, auth, or empty for inferred
-	ContractID  string                 `json:"contract_id,omitempty"`
-	Function    string                 `json:"function,omitempty"`
-	Arguments   []interface{}          `json:"arguments,omitempty"`
-	ReturnValue interface{}            `json:"return_value,omitempty"`
-	Error       string                 `json:"error,omitempty"`
-	HostState   map[string]interface{} `json:"host_state,omitempty"`
-	Memory      map[string]interface{} `json:"memory,omitempty"`
 }
 
 // DefaultSnapshotInterval is the number of steps between state snapshots.

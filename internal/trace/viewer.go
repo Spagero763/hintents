@@ -84,7 +84,7 @@ func (v *InteractiveViewer) Start() error {
 		if v.trap.SourceLocation != nil {
 			fmt.Printf("Location: %s:%d\n", v.trap.SourceLocation.File, v.trap.SourceLocation.Line)
 		}
-		fmt.Println("  Use 't' or 'trap' command to see local variables\n")
+			fmt.Println("  Use 't' or 'trap' command to see local variables")
 	}
 
 	// Resize handling: on SIGWINCH (Unix), reflow the current state display.
@@ -529,6 +529,7 @@ func (v *InteractiveViewer) showHelp() {
 	fmt.Println()
 	fmt.Println("Display:")
 	fmt.Println("  s, show, state          - Show current state")
+	fmt.Println("  e, expand               - Expand / show full detail of current step")
 	fmt.Println("  S                       - Toggle hiding/showing Rust core::* traces")
 	fmt.Println("  r, reconstruct [step]   - Reconstruct state")
 	fmt.Println("  t, trap                 - Show trap info with local variables")

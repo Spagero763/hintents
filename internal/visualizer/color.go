@@ -4,24 +4,57 @@
 package visualizer
 
 import (
+	"os"
+	"strings"
+
 	"github.com/dotandev/hintents/internal/terminal"
 )
 
 var defaultRenderer terminal.Renderer = terminal.NewANSIRenderer()
 
 // ColorEnabled reports whether ANSI color output should be used.
+// Checks NO_COLOR and TERM=dumb environment variables on every call
+// so that tests can control color via env vars dynamically.
 func ColorEnabled() bool {
+	// NO_COLOR takes precedence over everything
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		return false
+	}
+	// FORCE_COLOR enables colors unconditionally
+	if os.Getenv("FORCE_COLOR") != "" {
+		return true
+	}
+	// dumb terminal
+	if os.Getenv("TERM") == "dumb" {
+		return false
+	}
 	return defaultRenderer.IsTTY()
+}
+
+// colorMap maps color names to ANSI SGR codes.
+var colorMap = map[string]string{
+	"red":     sgrRed,
+	"green":   sgrGreen,
+	"yellow":  sgrYellow,
+	"blue":    sgrBlue,
+	"magenta": sgrMagenta,
+	"cyan":    sgrCyan,
+	"bold":    sgrBold,
+	"dim":     sgrDim,
 }
 
 // Colorize returns text with ANSI color if enabled, otherwise plain text.
 func Colorize(text string, color string) string {
-	return defaultRenderer.Colorize(text, color)
+	if !ColorEnabled() {
+		return text
+	}
+	code, ok := colorMap[strings.ToLower(color)]
+	if !ok {
+		return text
+	}
+	return code + text + sgrReset
 }
 
-// Success returns a success indicator.
-func Success() string {
-	return defaultRenderer.Success()
 // ContractBoundary returns a visual separator for cross-contract call transitions.
 func ContractBoundary(fromContract, toContract string) string {
 	if ColorEnabled() {
@@ -40,7 +73,6 @@ func Success() string {
 
 // Warning returns a warning indicator.
 func Warning() string {
-	return defaultRenderer.Warning()
 	if ColorEnabled() {
 		return themeColors("warning") + "[!]" + sgrReset
 	}
@@ -49,10 +81,6 @@ func Warning() string {
 
 // Error returns an error indicator.
 func Error() string {
-	return defaultRenderer.Error()
-}
-
-// Symbol returns a symbol that may be styled.
 	if ColorEnabled() {
 		return themeColors("error") + "[X]" + sgrReset
 	}
@@ -71,5 +99,44 @@ func Info() string {
 //
 //nolint:gocyclo
 func Symbol(name string) string {
-	return defaultRenderer.Symbol(name)
+	if ColorEnabled() {
+		return defaultRenderer.Symbol(name)
+	}
+	// Return plain ASCII equivalents (no ANSI, no Unicode symbols)
+	switch name {
+	case "check":
+		return "[OK]"
+	case "cross":
+		return "[X]"
+	case "warn":
+		return "[!]"
+	case "arrow_r":
+		return "->"
+	case "arrow_l":
+		return "<-"
+	case "target":
+		return ">>"
+	case "pin":
+		return "*"
+	case "wrench":
+		return "[*]"
+	case "chart":
+		return "[#]"
+	case "list":
+		return "[.]"
+	case "play":
+		return ">"
+	case "book":
+		return "[?]"
+	case "wave":
+		return ""
+	case "magnify":
+		return "[?]"
+	case "logs":
+		return "[Logs]"
+	case "events":
+		return "[Events]"
+	default:
+		return name
+	}
 }
