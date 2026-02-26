@@ -1,5 +1,6 @@
-.PHONY: build test lint lint-unused test-unused validate-ci validate-interface validate-errors clean
-.PHONY: bench bench-rpc bench-sim bench-profile
+.PHONY: build test lint lint-strict lint-unused test-unused validate-ci validate-interface clean
+.PHONY: rust-lint rust-lint-strict rust-test rust-build lint-all-strict
+.PHONY: build test lint validate-errors clean bench bench-rpc bench-sim bench-profile
 .PHONY: docker-build docker-build-multiarch docker-test docker-push
 .PHONY: fmt fmt-go fmt-rust pre-commit
 
