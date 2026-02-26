@@ -1,7 +1,7 @@
-.PHONY: build test lint lint-unused test-unused validate-ci validate-interface clean
-.PHONY: build test lint lint-unused test-unused validate-ci clean
-.PHONY: build test lint validate-errors clean bench bench-rpc bench-sim bench-profile
+.PHONY: build test lint lint-unused test-unused validate-ci validate-interface validate-errors clean
+.PHONY: bench bench-rpc bench-sim bench-profile
 .PHONY: docker-build docker-build-multiarch docker-test docker-push
+.PHONY: fmt fmt-go fmt-rust pre-commit
 
 # Build variables
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
