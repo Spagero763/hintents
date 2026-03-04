@@ -6,24 +6,15 @@ package visualizer
 import (
 	"os"
 
+	"github.com/dotandev/hintents/internal/terminal"
 	"github.com/mattn/go-isatty"
-)
-
-// ANSI SGR (Select Graphic Rendition) escape codes for terminal colors.
-const (
-	sgrRed     = "\033[31m"
-	sgrGreen   = "\033[32m"
-	sgrYellow  = "\033[33m"
-	sgrBlue    = "\033[34m"
-	sgrMagenta = "\033[35m"
-	sgrCyan    = "\033[36m"
-	sgrBold    = "\033[1m"
-	sgrDim     = "\033[2m"
 )
 
 var defaultRenderer terminal.Renderer = terminal.NewANSIRenderer()
 
 // ColorEnabled reports whether ANSI color output should be used.
+// Checks NO_COLOR and TERM=dumb environment variables on every call
+// so that tests can control color via env vars dynamically.
 func ColorEnabled() bool {
 	// NO_COLOR must always take precedence.
 	if _, ok := os.LookupEnv("NO_COLOR"); ok {
@@ -36,6 +27,18 @@ func ColorEnabled() bool {
 		return false
 	}
 	return isatty.IsTerminal(os.Stdout.Fd())
+}
+
+// colorMap maps color names to ANSI SGR codes.
+var colorMap = map[string]string{
+	"red":     sgrRed,
+	"green":   sgrGreen,
+	"yellow":  sgrYellow,
+	"blue":    sgrBlue,
+	"magenta": sgrMagenta,
+	"cyan":    sgrCyan,
+	"bold":    sgrBold,
+	"dim":     sgrDim,
 }
 
 // Colorize returns text with ANSI color if enabled, otherwise plain text.
@@ -78,14 +81,6 @@ func ContractBoundary(fromContract, toContract string) string {
 	return sgrMagenta + sgrBold + line + sgrReset
 }
 
-// ContractBoundary returns a visual separator for cross-contract call transitions.
-func ContractBoundary(fromContract, toContract string) string {
-	if ColorEnabled() {
-		return sgrMagenta + sgrBold + "--- contract boundary: " + fromContract + " -> " + toContract + " ---" + sgrReset
-	}
-	return "--- contract boundary: " + fromContract + " -> " + toContract + " ---"
-}
-
 // Success returns a success indicator.
 func Success() string {
 	return defaultRenderer.Success()
@@ -104,13 +99,6 @@ func Error() string {
 // Info returns an info indicator.
 func Info() string {
 	return Colorize("[i]", "cyan")
-}
-
-// ContractBoundary returns a visual separator indicating a cross-contract
-// transition from fromContract to toContract.
-func ContractBoundary(fromContract, toContract string) string {
-	text := "--- contract boundary: " + fromContract + " -> " + toContract + " ---"
-	return Colorize(text, sgrMagenta+sgrBold)
 }
 
 // Symbol returns a symbol name rendered as ASCII markers.

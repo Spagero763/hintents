@@ -1,4 +1,3 @@
-Note: In the codespace container I could not run tests because `jest` is not installed in the environment (command `jest: not found`). Running `npm ci` locally will install the dev dependencies and allow the test run.
 # PR Title
 Refactor config lifecycle into parse/default/validate phases
 

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/dotandev/hintents/internal/errors"
 )
@@ -173,6 +175,7 @@ var validNetworks = map[string]bool{
 	string(NetworkStandalone): true,
 }
 
+// Config represents the general configuration for erst
 type Config struct {
 	RpcUrl            string   `json:"rpc_url,omitempty"`
 	RpcUrls           []string `json:"rpc_urls,omitempty"`
@@ -182,12 +185,33 @@ type Config struct {
 	LogLevel          string   `json:"log_level,omitempty"`
 	CachePath         string   `json:"cache_path,omitempty"`
 	RPCToken          string   `json:"rpc_token,omitempty"`
-	CrashReporting    bool     `json:"crash_reporting,omitempty"`
-	CrashEndpoint     string   `json:"crash_endpoint,omitempty"`
-	CrashSentryDSN    string   `json:"crash_sentry_dsn,omitempty"`
-	RequestTimeout    int      `json:"request_timeout,omitempty"`
+	// CrashReporting enables opt-in anonymous crash reporting.
+	// Set via crash_reporting = true in config or ERST_CRASH_REPORTING=true.
+	CrashReporting bool `json:"crash_reporting,omitempty"`
+	// CrashEndpoint is a custom HTTPS URL that receives JSON crash reports.
+	// Set via crash_endpoint in config or ERST_CRASH_ENDPOINT.
+	CrashEndpoint string `json:"crash_endpoint,omitempty"`
+	// CrashSentryDSN is a Sentry Data Source Name for crash reporting.
+	// Set via crash_sentry_dsn in config or ERST_SENTRY_DSN.
+	CrashSentryDSN string `json:"crash_sentry_dsn,omitempty"`
+	// RequestTimeout is the HTTP request timeout in seconds for all RPC calls.
+	// Set via request_timeout in config or ERST_REQUEST_TIMEOUT.
+	// Defaults to 15 seconds.
+	RequestTimeout int `json:"request_timeout,omitempty"`
 }
 
+const defaultRequestTimeout = 15
+
+var defaultConfig = &Config{
+	RpcUrl:         "https://soroban-testnet.stellar.org",
+	Network:        NetworkTestnet,
+	SimulatorPath:  "",
+	LogLevel:       "info",
+	CachePath:      filepath.Join(os.ExpandEnv("$HOME"), ".erst", "cache"),
+	RequestTimeout: defaultRequestTimeout,
+}
+
+// GetGeneralConfigPath returns the path to the general configuration file
 func GetGeneralConfigPath() (string, error) {
 	configDir, err := GetConfigPath()
 	if err != nil {
@@ -196,12 +220,14 @@ func GetGeneralConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.json"), nil
 }
 
+// LoadConfig loads the general configuration from disk (JSON format)
 func LoadConfig() (*Config, error) {
 	configPath, err := GetGeneralConfigPath()
 	if err != nil {
 		return nil, err
 	}
 
+	// If file doesn't exist, return default config
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return DefaultConfig(), nil
 	}
@@ -222,15 +248,41 @@ func LoadConfig() (*Config, error) {
 // Load loads the configuration from environment variables and TOML files.
 // The lifecycle follows three distinct phases: load, merge defaults, validate.
 func Load() (*Config, error) {
-	cfg := &Config{}
-	parsers := []Parser{EnvParser{}, fileParser{}}
-	for _, parser := range parsers {
-		if err := parser.Parse(cfg); err != nil {
-			return nil, err
+	// Phase 1: Load from sources (env vars, then TOML file).
+	cfg := &Config{
+		RpcUrl:         getEnv("ERST_RPC_URL", ""),
+		Network:        Network(getEnv("ERST_NETWORK", "")),
+		SimulatorPath:  getEnv("ERST_SIMULATOR_PATH", ""),
+		LogLevel:       getEnv("ERST_LOG_LEVEL", ""),
+		CachePath:      getEnv("ERST_CACHE_PATH", ""),
+		RPCToken:       getEnv("ERST_RPC_TOKEN", ""),
+		CrashEndpoint:  getEnv("ERST_CRASH_ENDPOINT", ""),
+		CrashSentryDSN: getEnv("ERST_SENTRY_DSN", ""),
+		RequestTimeout: defaultRequestTimeout,
+	}
+
+	// ERST_REQUEST_TIMEOUT is an integer env var; parse it explicitly.
+	if v := os.Getenv("ERST_REQUEST_TIMEOUT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.RequestTimeout = n
 		}
 	}
 
-	ConfigDefaultsAssigner{}.Apply(cfg)
+	switch strings.ToLower(os.Getenv("ERST_CRASH_REPORTING")) {
+	case "1", "true", "yes":
+		cfg.CrashReporting = true
+	}
+
+	if urlsEnv := os.Getenv("ERST_RPC_URLS"); urlsEnv != "" {
+		cfg.RpcUrls = strings.Split(urlsEnv, ",")
+		for i := range cfg.RpcUrls {
+			cfg.RpcUrls[i] = strings.TrimSpace(cfg.RpcUrls[i])
+		}
+	}
+
+	if err := cfg.loadFromFile(); err != nil {
+		return nil, err
+	}
 
 	// Phase 2: Merge defaults for any fields still unset.
 	cfg.MergeDefaults()
@@ -362,6 +414,7 @@ func SaveConfig(config *Config) error {
 		return err
 	}
 
+	// Ensure config directory exists
 	configDir := filepath.Dir(configPath)
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return errors.WrapConfigError("failed to create config directory", err)
@@ -372,6 +425,7 @@ func SaveConfig(config *Config) error {
 		return errors.WrapConfigError("failed to marshal config", err)
 	}
 
+	// Write with restricted permissions (owner only)
 	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return errors.WrapConfigError("failed to write config file", err)
 	}
@@ -380,12 +434,23 @@ func SaveConfig(config *Config) error {
 }
 
 func (c *Config) Validate() error {
-	validator := NewCompositeValidator(
-		RequiredFieldsValidator{},
-		NetworkValidator{},
-		RequestTimeoutValidator{},
-	)
-	return validator.Validate(c)
+	return RunValidators(c, DefaultValidators())
+}
+
+// MergeDefaults fills zero-value fields with their defaults.
+func (c *Config) MergeDefaults() {
+	if c.RpcUrl == "" {
+		c.RpcUrl = defaultConfig.RpcUrl
+	}
+	if c.Network == "" {
+		c.Network = defaultConfig.Network
+	}
+	if c.LogLevel == "" {
+		c.LogLevel = defaultConfig.LogLevel
+	}
+	if c.CachePath == "" {
+		c.CachePath = defaultConfig.CachePath
+	}
 }
 
 func (c *Config) NetworkURL() string {
@@ -408,6 +473,19 @@ func (c *Config) String() string {
 		"Config{RPC: %s, Network: %s, LogLevel: %s, CachePath: %s}",
 		c.RpcUrl, c.Network, c.LogLevel, c.CachePath,
 	)
+}
+
+func getEnv(key, defaultValue string) string {
+	// Only allow environment variables that are explicitly namespaced with ERST_
+	if !strings.HasPrefix(key, "ERST_") {
+		return defaultValue
+	}
+
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+
+	return defaultValue
 }
 
 func DefaultConfig() *Config {

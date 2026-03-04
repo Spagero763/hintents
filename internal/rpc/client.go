@@ -303,6 +303,14 @@ func (c *Client) rotateURL() bool {
 	return true
 }
 
+// attempts returns the number of retry attempts for failover loops (at least 1)
+func (c *Client) attempts() int {
+	if len(c.AltURLs) == 0 {
+		return 1
+	}
+	return len(c.AltURLs)
+}
+
 func (c *Client) getHTTPClient() *http.Client {
 	if c.httpClient != nil {
 		return c.httpClient
@@ -460,6 +468,8 @@ func (c *Client) getTransactionAttempt(ctx context.Context, hash string) (txResp
 
 	logger.Logger.Debug("Fetching transaction details", "hash", hash, "url", c.HorizonURL)
 
+	startTime := time.Now()
+
 	// Fail fast if circuit breaker is open for this Horizon endpoint.
 	if !c.isHealthy(c.HorizonURL) {
 		err := fmt.Errorf("circuit breaker open for %s", c.HorizonURL)
@@ -533,13 +543,6 @@ type GetLedgerEntriesResponse struct {
 	} `json:"error,omitempty"`
 }
 
-type LedgerEntryResult struct {
-	Key                string `json:"key"`
-	Xdr                string `json:"xdr"`
-	LastModifiedLedger int    `json:"lastModifiedLedgerSeq"`
-	LiveUntilLedger    int    `json:"liveUntilLedgerSeq"`
-}
-
 // GetLedgerHeader fetches ledger header details for a specific sequence.
 // This includes essential metadata like sequence number, timestamp, protocol version,
 // and XDR-encoded header data needed for transaction simulation.
@@ -588,6 +591,10 @@ func (c *Client) GetLedgerHeader(ctx context.Context, sequence uint32) (*LedgerH
 		if len(c.AltURLs) <= 1 {
 			return nil, err
 		}
+	}
+	// Single-node path: return the typed error directly so callers can use Is/As.
+	if len(failures) == 1 {
+		return nil, failures[0].Reason
 	}
 	return nil, &AllNodesFailedError{Failures: failures}
 }
@@ -776,7 +783,6 @@ func (c *Client) GetLedgerEntries(ctx context.Context, keys []string) (map[strin
 
 	// Single batch - use existing failover logic
 	attempts := c.endpointAttempts()
-	var failures []NodeFailure
 	for attempt := 0; attempt < attempts; attempt++ {
 		fetchedEntries, err := c.getLedgerEntriesAttempt(ctx, keysToFetch)
 		if err == nil {
@@ -802,19 +808,6 @@ func (c *Client) GetLedgerEntries(ctx context.Context, keys []string) (map[strin
 		}
 	}
 	return nil, &AllNodesFailedError{Failures: []NodeFailure{}}
-}
-
-// chunkKeys splits keys into batches of specified size
-func chunkKeys(keys []string, batchSize int) [][]string {
-	var batches [][]string
-	for i := 0; i < len(keys); i += batchSize {
-		end := i + batchSize
-		if end > len(keys) {
-			end = len(keys)
-		}
-		batches = append(batches, keys[i:end])
-	}
-	return batches
 }
 
 // getLedgerEntriesConcurrent fetches multiple batches concurrently with timeout handling
@@ -933,6 +926,8 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 
 	logger.Logger.Debug("Fetching ledger entries", "count", len(keysToFetch), "url", targetURL)
 
+	startTime := time.Now()
+
 	// Fail fast if circuit breaker is open for this Soroban endpoint.
 	if !c.isHealthy(targetURL) {
 		err := errors.WrapRPCConnectionFailed(
@@ -955,13 +950,6 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 		return nil, errors.WrapMarshalFailed(err)
 	}
 
-	targetURL := c.HorizonURL
-	if c.Network == Testnet && targetURL == "" {
-		targetURL = TestnetSorobanURL
-	} else if c.Network == Mainnet && targetURL == "" {
-		targetURL = MainnetSorobanURL
-	} else if c.Network == Futurenet && targetURL == "" {
-		targetURL = FuturenetSorobanURL
 	// Validate payload size before attempting to send to network
 	if err := ValidatePayloadSize(int64(len(bodyBytes))); err != nil {
 		return nil, err
@@ -1011,7 +999,7 @@ func (c *Client) getLedgerEntriesAttempt(ctx context.Context, keysToFetch []stri
 	// Record successful remote node response
 	metrics.RecordRemoteNodeResponse(targetURL, string(c.Network), true, duration)
 
-	entries := make(map[string]string)
+	entries = make(map[string]string)
 	fetchedCount := 0
 	for _, entry := range rpcResp.Result.Entries {
 		entries[entry.Key] = entry.Xdr
@@ -1351,6 +1339,9 @@ func (c *Client) GetHealth(ctx context.Context) (*GetHealthResponse, error) {
 
 func (c *Client) getHealthAttempt(ctx context.Context) (healthResp *GetHealthResponse, err error) {
 	targetURL := c.SorobanURL
+	if targetURL == "" {
+		targetURL = c.HorizonURL
+	}
 	timer := c.startMethodTimer(ctx, "rpc.get_health", map[string]string{
 		"network": c.GetNetworkName(),
 		"rpc_url": targetURL,
@@ -1381,10 +1372,10 @@ func (c *Client) getHealthAttempt(ctx context.Context) (healthResp *GetHealthRes
 
 	// Prefer SorobanURL but fall back to the currently active HorizonURL so that
 	// rotateURL-triggered failovers are reflected in health checks.
-	targetURL := c.SorobanURL
 	if targetURL == "" {
 		targetURL = c.HorizonURL
 	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, errors.NewRPCError(errors.CodeRPCConnectionFailed, err)
@@ -1533,4 +1524,3 @@ func (c *Client) CheckStaleness(ctx context.Context, network string) error {
 
 	return nil
 }
-

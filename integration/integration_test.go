@@ -1,8 +1,15 @@
+// Copyright 2025 Erst Users
+// SPDX-License-Identifier: Apache-2.0
 
 package integration
 
 import (
 	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,7 +90,7 @@ func runErst(t *testing.T, args ...string) (stdout, stderr string, err error) {
 	return outBuf.String(), errBuf.String(), err
 }
 
-func timeoutCtx(t *testing.T, d time.Duration) (interface{ Done() <-chan struct{} }, func()) {
+func timeoutCtx(t *testing.T, d time.Duration) (context.Context, func()) {
 	t.Helper()
 
 	return buildTestContext(t, d)
@@ -266,11 +273,17 @@ func TestAuditSignInvalidJSON(t *testing.T) {
 }
 
 func TestAuditSignSoftwareKey(t *testing.T) {
-
-	const testPrivKeyPEM = `-----BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIBsHwm1TDPxKGMBhZpkFM+Z5dQT8F1dVzGTR3qkTxX+N
------END PRIVATE KEY-----`
-	t.Setenv("ERST_AUDIT_PRIVATE_KEY_PEM", testPrivKeyPEM)
+	// Generate a fresh Ed25519 key at test time to avoid hardcoded secrets.
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+	pkcs8Bytes, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatalf("failed to marshal test key: %v", err)
+	}
+	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8Bytes}))
+	t.Setenv("ERST_AUDIT_PRIVATE_KEY_PEM", keyPEM)
 
 	payload := `{"input":{},"state":{},"events":[],"timestamp":"2026-01-01T00:00:00.000Z"}`
 	stdout, stderr, err := runErst(t,

@@ -31,13 +31,14 @@ fn topics_serialize_to_valid_xdr_base64() {
     let host = make_host();
     if let Ok(events) = host.get_events() {
         for e in &events.0 {
-            let ContractEventBody::V0(v0) = &e.event.body;
-            for topic in v0.topics.iter() {
-                let bytes = topic
-                    .to_xdr(soroban_env_host::xdr::Limits::none())
-                    .expect("topic must serialize to XDR without error");
-                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                assert!(!encoded.is_empty(), "base64-encoded topic must not be empty");
+            if let ContractEventBody::V0(v0) = &e.event.body {
+                for topic in v0.topics.iter() {
+                    let bytes = topic
+                        .to_xdr(soroban_env_host::xdr::Limits::none())
+                        .expect("topic must serialize to XDR without error");
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    assert!(!encoded.is_empty(), "base64-encoded topic must not be empty");
+                }
             }
         }
     }
@@ -48,13 +49,14 @@ fn data_serializes_to_valid_xdr_base64() {
     let host = make_host();
     if let Ok(events) = host.get_events() {
         for e in &events.0 {
-            let ContractEventBody::V0(v0) = &e.event.body;
-            let bytes = v0
-                .data
-                .to_xdr(soroban_env_host::xdr::Limits::none())
-                .expect("data must serialize to XDR without error");
-            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            assert!(!encoded.is_empty(), "base64-encoded data must not be empty");
+            if let ContractEventBody::V0(v0) = &e.event.body {
+                let bytes = v0
+                    .data
+                    .to_xdr(soroban_env_host::xdr::Limits::none())
+                    .expect("data must serialize to XDR without error");
+                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                assert!(!encoded.is_empty(), "base64-encoded data must not be empty");
+            }
         }
     }
 }

@@ -18,10 +18,10 @@ import (
 
 // Global flag variables
 var (
-	TimestampFlag       int64
-	WindowFlag          int64
-	ProfileFlag         bool
-	ProfileFormatFlag   string
+	TimestampFlag     int64
+	WindowFlag        int64
+	ProfileFlag       bool
+	ProfileFormatFlag string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -131,6 +131,16 @@ func executeWithSignals(
 	}
 
 	return err
+}
+
+// checkForUpdatesAsync runs the update check in a goroutine to not block CLI startup
+func checkForUpdatesAsync() {
+	// Run update check in background goroutine
+	go func() {
+		// Use the Version variable from version.go
+		checker := updater.NewChecker(Version)
+		checker.CheckForUpdates()
+	}()
 }
 
 // checkForUpdatesAsync runs the update check in a goroutine to not block CLI startup
