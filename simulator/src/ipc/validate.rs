@@ -21,8 +21,8 @@ pub fn validate_request(input: &str) -> Result<Value, String> {
     // include the schema at compile-time
     let schema_json = include_str!("../../../docs/schema/simulation-request.schema.json");
     let schema: Value = serde_json::from_str(schema_json).unwrap();
-    let validator = jsonschema::validator_for(&schema)
-        .map_err(|e| format!("failed to compile schema: {e}"))?;
+    let validator =
+        jsonschema::validator_for(&schema).map_err(|e| format!("failed to compile schema: {e}"))?;
 
     // parse the incoming JSON
     let instance: Value = serde_json::from_str(input).map_err(|e| e.to_string())?;
